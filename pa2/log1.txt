@@ -1,0 +1,12 @@
+Process id: a328176e-1380-4b29-90f3-2790f0c145f0
+Listening on 127.0.0.1:5001, connecting to 127.0.0.1:5002
+Both connections established.
+Sent: uuid=a328176e-1380-4b29-90f3-2790f0c145f0, flag=0
+Received: uuid=9ba0277c-ad76-4d95-a5f7-ebbc8877b12b, flag=0, less, 0
+Ignored: uuid=9ba0277c-ad76-4d95-a5f7-ebbc8877b12b, flag=0 (smaller uuid)
+Received: uuid=a328176e-1380-4b29-90f3-2790f0c145f0, flag=0, same, 0
+Leader is decided to a328176e-1380-4b29-90f3-2790f0c145f0.
+leader is a328176e-1380-4b29-90f3-2790f0c145f0
+Sent: uuid=a328176e-1380-4b29-90f3-2790f0c145f0, flag=1
+Received: uuid=a328176e-1380-4b29-90f3-2790f0c145f0, flag=1, same, 1, leader=a328176e-1380-4b29-90f3-2790f0c145f0
+Ignored: uuid=a328176e-1380-4b29-90f3-2790f0c145f0, flag=1 (leader already known)
