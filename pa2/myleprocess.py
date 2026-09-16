@@ -21,12 +21,23 @@ class Message:
         self.flag = flag  # 0 = electing, 1 = leader already chosen
 
     def to_json(self):
-        return json.dumps({"uuid": str(self.uuid), "flag": self.flag})
+        return json.dumps(
+            {
+                "uuid": str(self.uuid),
+                "flag": self.flag
+            }
+        )
 
     @classmethod
     def from_json(cls, text):
-        data = json.loads(text)
-        return cls(uuid.UUID(str(data["uuid"])), int(data["flag"]))
+        return cls.from_data(json.loads(text))
+
+    @classmethod
+    def from_data(cls, data):
+        return cls(
+            uuid.UUID(str(data["uuid"])),
+            int(data["flag"]),
+        )
 
 
 def load_config(path):
@@ -75,14 +86,27 @@ class ElectionNode:
     def _server_loop(self):
         # accept() in its own thread so it cannot block connect()
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_sock = socket.socket(
+                socket.AF_INET,
+                socket.SOCK_STREAM
+            )
+            server_sock.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_REUSEADDR,
+                1
+            )
             try:
-                sock.bind((self.listen_ip, self.listen_port))
+                server_sock.bind((self.listen_ip, self.listen_port))
             except OSError:
-                sock.bind(("0.0.0.0", self.listen_port))
-            sock.listen(1)
-            self.recv_sock, _ = sock.accept()
+                server_sock.bind(("0.0.0.0", self.listen_port))
+            server_sock.listen(1)
+            self.log(
+                f"Listening on {self.listen_ip}:{self.listen_port}"
+            )
+            self.recv_sock, address = server_sock.accept()
+            self.log(
+                f"Accepted connection from {address[0]}:{address[1]}"
+            )
         except BaseException as exc:
             self._accept_error = exc
         finally:
@@ -90,28 +114,46 @@ class ElectionNode:
 
     def _connect_client(self):
         last_error = None
-        for _ in range(40):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        for _ in range(120):
+            sock = socket.socket(
+                socket.AF_INET,
+                socket.SOCK_STREAM
+            )
             try:
-                sock.connect((self.connect_ip, self.connect_port))
+                sock.connect(
+                    (self.connect_ip, self.connect_port)
+                )
+                self.log(
+                    f"Connected to "
+                    f"{self.connect_ip}:{self.connect_port}"
+                )
                 return sock
             except OSError as exc:
                 last_error = exc
                 sock.close()
                 time.sleep(0.25)
         raise ConnectionError(
-            f"could not connect to {self.connect_ip}:{self.connect_port}: {last_error}"
+            f"Could not connect to "
+            f"{self.connect_ip}:{self.connect_port}: "
+            f"{last_error}"
         )
 
     def _send(self, message):
-        self.send_sock.sendall((message.to_json() + "\n").encode("utf-8"))
-        self.log(f"Sent: uuid={message.uuid}, flag={message.flag}")
+        # JSON already ends with '}', which marks the end of a message
+        encoded = message.to_json().encode("utf-8")
+        self.send_sock.sendall(encoded)
+        self.log(
+            f"Sent: uuid={message.uuid}, "
+            f"flag={message.flag}"
+        )
 
     def _handle(self, message):
         comparison = self._cmp(message.uuid)
         received = (
-            f"Received: uuid={message.uuid}, flag={message.flag}, "
-            f"{comparison}, {self.state}"
+            f"Received: uuid={message.uuid}, "
+            f"flag={message.flag}, "
+            f"{comparison}, "
+            f"{self.state}"
         )
         if self.state == 1:
             received += f", leader={self.leader_id}"
@@ -119,43 +161,71 @@ class ElectionNode:
 
         if message.flag == 1:
             if self.state == 1:
-                self.log(f"Ignored: uuid={message.uuid}, flag={message.flag}")
+                self.log(
+                    f"Ignored: uuid={message.uuid}, "
+                    f"flag={message.flag}"
+                )
                 return
             self.leader_id = message.uuid
             self.state = 1
-            self.log(f"Leader is decided to {self.leader_id}.")
-            print(f"leader is {self.leader_id}", flush=True)
-            if message.uuid != self.my_id:
-                self._send(message)
+            self.log(
+                f"Leader is decided to {self.leader_id}."
+            )
+            print(
+                f"leader is {self.leader_id}",
+                flush=True
+            )
+            self._send(message)
             return
 
         if self.state == 1:
-            self.log(f"Ignored: uuid={message.uuid}, flag={message.flag}")
+            self.log(
+                f"Ignored: uuid={message.uuid}, "
+                f"flag={message.flag}"
+            )
             return
 
         if message.uuid > self.my_id:
             self._send(message)
         elif message.uuid < self.my_id:
-            self.log(f"Ignored: uuid={message.uuid}, flag={message.flag}")
+            self.log(
+                f"Ignored: uuid={message.uuid}, "
+                f"flag={message.flag}"
+            )
         else:
             # received our own UUID — we are the leader
             self.leader_id = self.my_id
             self.state = 1
-            self.log(f"Leader is decided to {self.leader_id}.")
-            print(f"leader is {self.leader_id}", flush=True)
-            self._send(Message(self.my_id, flag=1))
+            self.log(
+                f"Leader is decided to {self.leader_id}."
+            )
+            print(
+                f"leader is {self.leader_id}",
+                flush=True
+            )
+            self._send(
+                Message(
+                    self.my_id,
+                    flag=1
+                )
+            )
 
     def run(self):
-        self.log(f"Process id: {self.my_id}")
+        self.log(
+            f"Process id: {self.my_id}"
+        )
 
-        threading.Thread(target=self._server_loop, daemon=True).start()
+        server_thread = threading.Thread(
+            target=self._server_loop,
+            daemon=True
+        )
+        server_thread.start()
         time.sleep(1.0)
 
         if self.wait:
-            self._accepted.wait()
-            if self._accept_error:
-                raise self._accept_error
-            input("press Enter when everyone is ready.")
+            input(
+                "press Enter when everyone is ready."
+            )
 
         self.send_sock = self._connect_client()
         self._accepted.wait()
@@ -163,7 +233,12 @@ class ElectionNode:
             raise self._accept_error
 
         # send our UUID once, with no comparison
-        self._send(Message(self.my_id, flag=0))
+        self._send(
+            Message(
+                self.my_id,
+                flag=0
+            )
+        )
 
         buffer = ""
         while True:
@@ -171,21 +246,39 @@ class ElectionNode:
             if not chunk:
                 return
             buffer += chunk.decode("utf-8")
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                line = line.strip()
-                if line:
-                    self._handle(Message.from_json(line))
+            # '}' marks the end of a message
+            while "}" in buffer:
+                raw, buffer = buffer.split("}", 1)
+                raw = (raw + "}").strip()
+                if raw:
+                    message = Message.from_json(
+                        raw
+                    )
+                    self._handle(message)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="config.txt")
-    parser.add_argument("--log", default="log.txt")
-    parser.add_argument("--wait", action="store_true")
+    parser.add_argument(
+        "--config",
+        default="config.txt"
+    )
+    parser.add_argument(
+        "--log",
+        default="log.txt"
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true"
+    )
     args = parser.parse_args()
 
-    node = ElectionNode(load_config(args.config), args.log, args.wait)
+    config = load_config(args.config)
+    node = ElectionNode(
+        config,
+        args.log,
+        args.wait
+    )
     node.run()
 
 
